@@ -25,20 +25,60 @@
 #include "iostream"
 #include "fstream"
 
-#define BUFSIZE 1024
+#define BUFSIZE 1000
 
-std::ofstream *outfile;
+using namespace std;
+
+ofstream *outfile;
+
+int sampleRate = 44100;
+int fileLengthInSeconds = 3;
+int numChannels = 1;
+int bitsPerSample = 16;
+
+int numberOfWrites = sampleRate * fileLengthInSeconds * numChannels * bitsPerSample / 8 / BUFSIZE;
 
 void openFile() {
-   	outfile = new std::ofstream("recorded_in_cpp_using_pulse.raw",std::ofstream::binary);
+   	outfile = new ofstream("recorded_in_cpp_using_pulse.wav", ios::out | ios::binary);
 }
 
 void closeFile() {
    	outfile->close();
 }
 
+// The Raspberry Pi 4 is a little endian machine
+// This code does not even attempt to work on big endian cpus
+// Hopefully it's not an issue later
 void writeFileHeader() {
+    int numSamples = sampleRate * fileLengthInSeconds;
+    int subChunk2Size = numSamples * numChannels * bitsPerSample / 8;
+
     outfile->write("RIFF", sizeof(char) * 4);
+    // 4 bytes for chunk size
+    int chunkSize = 36 + subChunk2Size;
+    outfile->write(reinterpret_cast<const char *>(&chunkSize), sizeof(chunkSize));
+    outfile->write("WAVE", sizeof(char) * 4);
+    outfile->write("fmt ", sizeof(char) * 4);
+    const char subChunkSize[] = {0x10, 0x00, 0x00, 0x00};
+    outfile->write(subChunkSize, sizeof(char) * 4);
+    // 2 bytes for audio format (PCM = "0x01 0x00")
+    const char audioFormat[] = {0x01, 0x00};
+    outfile->write(audioFormat, sizeof(char) * 2);
+    // 2 bytes for number of channels
+    outfile->write(reinterpret_cast<const char *>(&numChannels), 2);
+    // Four bytes for sample rate
+    outfile->write(reinterpret_cast<const char *>(&sampleRate), sizeof(sampleRate));
+    // Four bytes for byte rate
+    int byteRate = sampleRate * numChannels * bitsPerSample / 8;
+    outfile->write(reinterpret_cast<const char *>(&byteRate), sizeof(byteRate));
+    // 2 bytes for block align
+    int blockAlign = numChannels * bitsPerSample / 8;
+    outfile->write(reinterpret_cast<const char *>(&blockAlign), 2);
+    // 2 bytes for bits per sample
+    outfile->write(reinterpret_cast<const char *>(&bitsPerSample), 2);
+    outfile->write("data", sizeof(char) * 4);
+    // 4 bytes for sub chunk 2 size
+    outfile->write(reinterpret_cast<const char *>(&subChunk2Size), sizeof(subChunk2Size));
 }
 
 void writeFile(char *buffer, int bufferSize) {
@@ -65,8 +105,8 @@ int main(int argc, char*argv[]) {
     /* The sample type to use */
     static const pa_sample_spec ss = {
         .format = PA_SAMPLE_S16LE,
-        .rate = 44100,
-        .channels = 1
+        .rate = (uint32_t)sampleRate,
+        .channels = (uint8_t)numChannels
     };
     pa_simple *s = NULL;
     int ret = 1;
@@ -80,7 +120,7 @@ int main(int argc, char*argv[]) {
     openFile();
     writeFileHeader();
 
-    for (;;) {
+    for (int i = 0; i < numberOfWrites; ++i) {
         uint8_t buf[BUFSIZE];
         /* Record some data ... */
         if (pa_simple_read(s, buf, sizeof(buf), &error) < 0) {
