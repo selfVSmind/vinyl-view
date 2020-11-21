@@ -1,3 +1,5 @@
+#include "audio_manager.h"
+
 /***
   This file is part of PulseAudio.
   PulseAudio is free software; you can redistribute it and/or modify
@@ -27,19 +29,10 @@
 
 #define BUFSIZE 1000
 
-using namespace std;
-
-ofstream *outfile;
-
-int sampleRate = 44100;
-int fileLengthInSeconds = 3;
-int numChannels = 1;
-int bitsPerSample = 16;
-
-int numberOfWrites = sampleRate * fileLengthInSeconds * numChannels * bitsPerSample / 8 / BUFSIZE;
+std::ofstream *outfile;
 
 void openFile() {
-   	outfile = new ofstream("recorded_in_cpp_using_pulse.wav", ios::out | ios::binary);
+   	outfile = new std::ofstream("recorded_in_cpp_using_pulse.wav", std::ios::out | std::ios::binary);
 }
 
 void closeFile() {
@@ -49,7 +42,7 @@ void closeFile() {
 // The Raspberry Pi 4 is a little endian machine
 // This code does not even attempt to work on big endian cpus
 // Hopefully it's not an issue later
-void writeFileHeader() {
+void writeFileHeader(int sampleRate, int fileLengthInSeconds, int numChannels, int bitsPerSample) {
     int numSamples = sampleRate * fileLengthInSeconds;
     int subChunk2Size = numSamples * numChannels * bitsPerSample / 8;
 
@@ -101,7 +94,15 @@ static ssize_t loop_write(int fd, const void*data, size_t size) {
     }
     return ret;
 }
-int main(int argc, char*argv[]) {
+// int main(int argc, char*argv[]) {
+std::string audio_manager::recordWavFile(int fileLengthInSeconds) {
+
+    int sampleRate = 44100;
+    int numChannels = 1;
+    int bitsPerSample = 16;
+
+    int numberOfWrites = sampleRate * fileLengthInSeconds * numChannels * bitsPerSample / 8 / BUFSIZE;
+
     /* The sample type to use */
     static const pa_sample_spec ss = {
         .format = PA_SAMPLE_S16LE,
@@ -112,13 +113,14 @@ int main(int argc, char*argv[]) {
     int ret = 1;
     int error;
     /* Create the recording stream */
-    if (!(s = pa_simple_new(NULL, argv[0], PA_STREAM_RECORD, NULL, "record", &ss, NULL, NULL, &error))) {
+    // if (!(s = pa_simple_new(NULL, argv[0], PA_STREAM_RECORD, NULL, "record", &ss, NULL, NULL, &error))) {
+    if (!(s = pa_simple_new(NULL, "stream_name", PA_STREAM_RECORD, NULL, "record", &ss, NULL, NULL, &error))) {
         fprintf(stderr, __FILE__": pa_simple_new() failed: %s\n", pa_strerror(error));
         goto finish;
     }
 
     openFile();
-    writeFileHeader();
+    writeFileHeader(sampleRate, fileLengthInSeconds, numChannels, bitsPerSample);
 
     for (int i = 0; i < numberOfWrites; ++i) {
         uint8_t buf[BUFSIZE];
@@ -144,5 +146,23 @@ int main(int argc, char*argv[]) {
 finish:
     if (s)
         pa_simple_free(s);
-    return ret;
+    return "We've got ourselves a wav file!!";
+}
+
+Napi::String audio_manager::RecordWavFileNapi(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Length of output WAV is required.").ThrowAsJavaScriptException();
+    } 
+
+    Napi::Number fileLengthInSeconds = info[0].As<Napi::Number>();
+
+    Napi::String returnValue = Napi::String::New(env, audio_manager::recordWavFile(fileLengthInSeconds.Int32Value()));
+    return returnValue;
+}
+
+Napi::Object audio_manager::Init(Napi::Env env, Napi::Object exports) {
+    exports.Set("recordWavFile", Napi::Function::New(env, audio_manager::RecordWavFileNapi));
+    return exports;
 }
