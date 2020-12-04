@@ -4,3 +4,6 @@ build/
 
 # lets not accidentally commit my test recordings :)
 recorded_in_cpp_using_pulse.wav
+
+# private key data.. don't want to commit that either
+settings.json
