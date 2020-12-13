@@ -1,6 +1,6 @@
 /***
  * This file has been completely reworked but I started with the following example code
- * https://freedesktop.org/software/pulseaudio/doxygen/parec-simple_8c-example.html
+ * http://0pointer.de/lennart/projects/pulseaudio/doxygen/parec-simple_8c-example.html
  * 
  * 
  * All changes from that original file have been done by Jason Lambert

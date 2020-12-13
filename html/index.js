@@ -1,5 +1,12 @@
 window.onload = function() {
-   AudioManager.recordWavFile(10, callback);
+    document.body.onkeydown = keyDownEventHandler;
+
+    AudioManager.recordWavFile(10, callback);
+    // callback();
+}
+
+function keyDownEventHandler(e) {
+    if(e.key == 'n') metadataManager.tryNext();
 }
 
 function callback() {
@@ -8,25 +15,31 @@ function callback() {
 
 function secondCallback(err, httpResponse, body) {
     if (err) console.log(err);
+
     body = JSON.parse(body);
-    let selection = body.metadata.music[0];
-    let artist = selection.artists[0].name;
-    let album = selection.album.name;
+    console.log(JSON.stringify(body, null, 2));
 
-    document.getElementById("artist").innerHTML = artist;
-    document.getElementById("album").innerHTML = album;
+    if(body.status.code == 1001) {
+        AudioManager.recordWavFile(10, callback);
+        return;
+    }
 
-    const discogsSearch = "https://api.discogs.com/database/search?q="
-                            + artist.replace(" ", "%20")
-                            + "%20"
-                            + album.replace(" ", "%20")
-                            + "&token="
-                            + PrivateKeys.discogs.token;
+    let recognizedSongs = body.metadata.music;
+    let cleanRecognizedSongs = {};
+    recognizedSongs.forEach(song => {
+        let key = song.artists[0].name + song.title;
+        if(!(key in recognizedSongs)) {
+            cleanRecognizedSongs[key] = {
+                artists: song.artists,
+                song: song.title,
+                offset: song.play_offset_ms,
+                length: song.duration_ms
+            }
+        }
+                
+    });
 
-    console.log(discogsSearch);
-    fetch(discogsSearch)
-    .then(data => {return data.json()})
-    .then(data => {
-        document.getElementById("albumArt").setAttribute("src", data.results[0].cover_image)});
-    // .then(data=>{console.log(JSON.stringify(data))});
+    console.log(JSON.stringify(cleanRecognizedSongs, null, 2));
+
+    metadataManager.refresh(cleanRecognizedSongs);
 }
